@@ -113,3 +113,76 @@ ip link set vxlan88 up
 ## 总结：
 
 gpt太强大了，但也要能够先定位到问题，这个问题可能是远端的应答arp请求的相关配置没有开启导致的，当然，也可能是重启了vxlan虚拟网卡解决的。
+
+configVxlan.sh脚本如下：
+
+```bash
+#!/bin/bash
+
+cur_path=`echo $(cd "$(dirname "$0")"; pwd)`
+
+
+##本地配置vxlan
+function initVxlan() {
+    if [ $# != 1 ] ; then
+        echo "need one parameters,local ip."
+        return 1
+    fi
+	localIp=$1
+	eth=$(ip addr show|grep "$localIp/"|awk '{print $NF}'|head -1)
+	if [ -z "$eth" ] ; then
+        echo "the ip is not existed in local."
+        return 1
+    fi
+    ip link add vxlan88 type vxlan id 88 dstport 4789 dev $eth
+    ip addr add 88.${localIp#*.}/8 dev vxlan88
+    ip link set vxlan88 up
+}
+
+
+##删除vxlan
+function delVxlan() {
+    ip link del vxlan88
+}
+
+
+##添加转发表，用于隧道建连
+function addRemote() {
+    if [ $# != 1 ] ; then
+        echo "need one parameters,remote ip."
+        return 1
+    fi
+    remoteIp=$1
+	bridge fdb append to 00:00:00:00:00:00 dst $remoteIp dev vxlan88
+}
+
+
+##显示建立隧道的IP
+function showRemote() {
+    bridge fdb show|grep vxlan88|grep "00:00:00:00:00:00"|awk '{print $5}'
+}
+
+
+
+##帮助日志
+function errorhelp() {
+    echo "参数有误，至少需要1个参数！"
+    echo "参数1当前支持initVxlan、delVxlan、addRemote、showRemote"
+	echo "当参数1为initVxlan时，参数2为本地ip"
+	echo "当参数1为addRemote时，参数2为需要和远端建连的ip"
+}
+
+
+if [[ "showRemote" == $1 ]];then
+    showRemote
+elif [[ "delVxlan" == $1 ]];then
+    delVxlan
+elif [[ "addRemote" == $1 ]];then
+    addRemote $2
+elif [[ "initVxlan" == $1 ]];then
+    initVxlan $2
+else
+    errorhelp
+fi
+```
+
